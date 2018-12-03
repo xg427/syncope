@@ -31,7 +31,7 @@ import org.apache.syncope.core.persistence.api.entity.PlainSchema;
 import org.apache.syncope.core.provisioning.api.serialization.POJOHelper;
 import org.apache.syncope.core.persistence.api.entity.JSONPlainAttr;
 
-public class PGJPAJSONAnySearchDAO extends AbstractJPAJSONAnySearchDAO {
+public class MyJPAJSONAnySearchDAO extends AbstractJPAJSONAnySearchDAO {
 
     @Override
     protected void parseOrderByForPlainSchema(
@@ -47,8 +47,10 @@ public class PGJPAJSONAnySearchDAO extends AbstractJPAJSONAnySearchDAO {
 
         obs.views.add(svs.field());
 
-        item.select = svs.field().alias + ".attrValues ->> '" + fieldName + "' AS " + fieldName;
-        item.where = "attrs ->> 'schema' = '" + fieldName + "'";
+        item.select = svs.field().alias + "."
+                + (schema.isUniqueConstraint() ? "attrUniqueValue" : svs.fieldName(schema.getType()))
+                + " AS " + fieldName;
+        item.where = "plainSchema = '" + fieldName + "'";
         item.orderBy = fieldName + " " + clause.getDirection().name();
     }
 
@@ -72,15 +74,16 @@ public class PGJPAJSONAnySearchDAO extends AbstractJPAJSONAnySearchDAO {
                 ((JSONPlainAttr) container).add(attrValue);
             }
 
-            query.append("plainAttrs @> '").
+            query.append("JSON_CONTAINS(plainAttrs, '").
                     append(POJOHelper.serialize(Arrays.asList(container))).
-                    append("'::jsonb");
+                    append("')");
         } else {
-            query.append("attrs ->> 'schema' = ?").append(setParameter(parameters, cond.getSchema())).
+            query.append("plainSchema = ?").append(setParameter(parameters, cond.getSchema())).
                     append(" AND ").
                     append(schemaInfo.getRight() ? "LOWER(" : "").
-                    append(schema.isUniqueConstraint() ? "attrs -> 'uniqueValue'" : "attrValues").
-                    append(" ->> '").append(schemaInfo.getLeft()).append("'").
+                    append(schema.isUniqueConstraint()
+                            ? "attrUniqueValue ->> '$." + schemaInfo.getLeft() + "'"
+                            : schemaInfo.getLeft()).
                     append(schemaInfo.getRight() ? ")" : "");
 
             appendOp(query, cond.getType(), not);
@@ -118,17 +121,15 @@ public class PGJPAJSONAnySearchDAO extends AbstractJPAJSONAnySearchDAO {
                 append(svs.field().name).append(" WHERE ");
         switch (cond.getType()) {
             case ISNOTNULL:
-                query.append("plainAttrs @> '[{\"schema\":\"").
+                query.append("JSON_SEARCH(plainAttrs, 'one', '").
                         append(checked.getLeft().getKey()).
-                        append("\"}]'::jsonb");
+                        append("', NULL, '$[*].schema') IS NOT NULL");
                 break;
 
             case ISNULL:
-                query.append("any_id NOT IN (").
-                        append("SELECT any_id FROM ").append(svs.field().name).
-                        append(" WHERE plainAttrs @> '[{\"schema\":\"").
+                query.append("JSON_SEARCH(plainAttrs, 'one', '").
                         append(checked.getLeft().getKey()).
-                        append("\"}]'::jsonb)");
+                        append("', NULL, '$[*].schema') IS NULL");
                 break;
 
             default:

@@ -166,6 +166,8 @@ public class JPAAnySearchDAO extends AbstractAnySearchDAO {
             // 1. get the query string from the search condition
             StringBuilder queryString = getQuery(buildEffectiveCond(cond, filter.getRight()), parameters, svs);
 
+            LOG.debug("Query: {}, parameters: {}", queryString, parameters);
+
             // 2. take into account realms and ordering
             OrderBySupport obs = parseOrderBy(kind, svs, orderBy);
             if (queryString.charAt(0) == '(') {
@@ -178,6 +180,8 @@ public class JPAAnySearchDAO extends AbstractAnySearchDAO {
             queryString.
                     append(filter.getLeft()).
                     append(buildOrderBy(obs));
+
+            LOG.debug("Query with auth and order by statements: {}, parameters: {}", queryString, parameters);
 
             // 3. prepare the search query
             Query query = entityManager().createNativeQuery(queryString.toString());
